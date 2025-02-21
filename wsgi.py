@@ -166,3 +166,16 @@ def list_todos():
         [todo.text, todo.done, todo.user.username,
          todo.get_cat_list()])
   print(tabulate(data, headers=["Text", "Done", "User", "Categories"]))
+
+#load todo data from csv file
+with open('todos.csv') as file:
+   reader = csv.DictReader(file)
+   for row in reader:
+     new_todo = Todo(text=row['text']) #create object
+     #update fields based on records
+     new_todo.done = True if row['done'] == 'true' else False
+     new_todo.user_id = int(row['user_id'])
+     db.session.add(new_todo) #queue changes for saving
+   db.session.commit() 
+   #save all changes OUTSIDE the loop
+

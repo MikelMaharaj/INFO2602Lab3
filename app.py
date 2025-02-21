@@ -1,17 +1,17 @@
-from flask import Flask, jsonify, request
+#Mikel
 from functools import wraps
+
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
     get_jwt_identity,
     jwt_required,
     set_access_cookies,
-    unset_jwt_cookies,
 )
 
-from models import Admin, Category, RegularUser, Todo, TodoCategory, db, User
+from models import RegularUser, User, db
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///project.db"
@@ -30,35 +30,98 @@ CORS(app)
 
 jwt = JWTManager(app)
 
+
 # customn decorator authorize routes for admin or regular user
 def login_required(required_class):
+
   def wrapper(f):
-      @wraps(f)
-      @jwt_required()  # Ensure JWT authentication
-      def decorated_function(*args, **kwargs):
-        user = required_class.query.filter_by(username=get_jwt_identity()).first()  
-        print(user.__class__, required_class, user.__class__ == required_class)
-        if user.__class__ != required_class:  # Check class equality
-            return jsonify(message='Invalid user role'), 403
-        return f(*args, **kwargs)
-      return decorated_function
+
+    @wraps(f)
+    @jwt_required()  # Ensure JWT authentication
+    def decorated_function(*args, **kwargs):
+      user = required_class.query.filter_by(
+          username=get_jwt_identity()).first()
+      print(user.__class__, required_class, user.__class__ == required_class)
+      if user.__class__ != required_class:  # Check class equality
+        return jsonify(message='Invalid user role'), 403
+      return f(*args, **kwargs)
+
+    return decorated_function
+
   return wrapper
+
 
 @app.route('/')
 def index():
   return '<h1>mY Todo API</h1>'
 
+
 # Task 3.1 Here
+def login_user(username, password):
+  user = User.query.filter_by(username=username).first()
+  if user and user.check_password(password):
+    token = create_access_token(identity=username)
+    response = jsonify(access_token=token)
+    set_access_cookies(response, token)
+    return response
+  return jsonify(message="Invalid username or password"), 401
+
 
 # Task 3.2 Here
 
+
+@app.route('/login', methods=['POST'])
+def user_login_view():
+  data = request.json
+  response = login_user(data['username'], data['password'])
+  if not response:
+    return jsonify(message='bad username or password given'), 403
+  return response
+
+
 # Task 3.3 Here
+@app.route('/identify')
+@jwt_required()
+def identify_view():
+  username = get_jwt_identity()
+  user = User.query.filter_by(username=username).first()
+  if user:
+    return jsonify(user.get_json())
+  return jsonify(message='Invalid user'), 403
+
 
 # Task 3.4 Here
+@app.route('/logout', methods=['GET'])
+def logout():
+  response = jsonify(message='Logged out')
+  unset_jwt_cookies(response)
+  return response
+
 
 # Task 4 Here
+@app.route('/signup', methods=['POST'])
+def signup_user_view():
+  data = request.json
+  try:
+    new_user = RegularUser(data['username'], data['email'], data['password'])
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify(
+        message=f'User {new_user.id} - {new_user.username} created!'), 201
+  except IntegrityError:
+    db.session.rollback()
+    return jsonify(message='Username already exists'), 400
+
 
 # ********** Todo Crud Operations ************
+@app.route('/todos', methods=['GET'])
+@jwt_required()
+def get_all_user_todos():
+  username = get_jwt_identity()
+  user = RegularUser.query.filter_by(username=username).first()
+  if user:
+    all_todos = user.todos
+    return jsonify([todo.get_json() for todo in all_todos])
 
 
 # Task 5.1 Here POST /todos
@@ -70,6 +133,7 @@ def index():
 # Task 5.4 Here PUT /todos/id
 
 # Task 5.5 Here DELETE /todos/id
+
 
 @app.route('/todos/stats', methods=['GET'])
 @login_required(RegularUser)
